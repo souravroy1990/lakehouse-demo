@@ -1,0 +1,222 @@
+services:
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - lakehousenet
+ 
+  # Kafka broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"    # internal container port for PLAINTEXT
+      - "29092:29092"  # optional host port for PLAINTEXT_HOST
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - lakehousenet
+    
+  # Python fake data producer
+  fake-data-producer:
+    build:
+      context: ../src
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - KAFKA_TOPIC=fake-data-topic
+    networks:
+      - lakehousenet
+
+  # MinIO for S3-compatible lakehouse storage
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio/data:/data
+    networks:
+      - lakehousenet
+
+  # Hive Metastore (Catalog for Iceberg & Paimon)
+  hive-metastore:
+    image: apache/hive:3.1.3
+    container_name: hive-metastore
+    hostname: hive-metastore
+    depends_on:
+      - minio
+    ports:
+      - "9083:9083"
+    environment:
+      SERVICE_NAME: metastore
+      HIVE_METASTORE_PORT: 9083
+      HIVE_HOME: /opt/hive
+      HIVE_USER_HOME: /home/hive
+      HIVE_CONF_DIR: /opt/hive/conf
+      HADOOP_CLIENT_OPTS: "-Xmx1G"
+    volumes:
+      - ./hive:/opt/hive/conf                # Hive configuration files
+      - ./hive-home:/home/hive               # Hive user home for Beeline, logs, history
+      - hive-data:/user/hive/warehouse       # Persistent warehouse data (optional)
+      - ./hive/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./hive/core-site.xml:/opt/hive/conf/core-site.xml
+      - ./hive/hive-site.xml:/opt/hive/conf/hive-site.xml
+      # Mount JARs into BOTH Hive + Hadoop lib paths
+      - ../jars/hadoop-aws-2.10.1.jar:/opt/hadoop/share/hadoop/common/lib/hadoop-aws-2.10.1.jar
+      - ../jars/aws-java-sdk-bundle-1.11.901.jar:/opt/hadoop/share/hadoop/common/lib/aws-java-sdk-bundle-1.11.901.jar
+      - ../jars/guava-28.2-jre.jar:/opt/hadoop/share/hadoop/common/lib/guava-28.2-jre.jar
+      - ../jars/failureaccess-1.0.1.jar:/opt/hadoop/share/hadoop/common/lib/failureaccess-1.0.1.jar
+      - ../jars/hadoop-aws-2.10.1.jar:/opt/hive/lib/hadoop-aws-2.10.1.jar
+      - ../jars/aws-java-sdk-bundle-1.11.901.jar:/opt/hive/lib/aws-java-sdk-bundle-1.11.901.jar
+      - ../jars/guava-28.2-jre.jar:/opt/hive/lib/guava-28.2-jre.jar
+      - ../jars/failureaccess-1.0.1.jar:/opt/hive/lib/failureaccess-1.0.1.jar
+      - ../jars/commons-lang-2.6.jar:/opt/hadoop/share/hadoop/common/lib/commons-lang-2.6.jar
+      - ../jars/commons-lang-2.6.jar:/opt/hadoop/share/hadoop/hdfs/lib/commons-lang-2.6.jar
+      - ../jars/commons-lang-2.6.jar:/opt/hadoop/share/hadoop/yarn/lib/commons-lang-2.6.jar
+    command: /opt/hive/bin/hive --skiphadoopversion --skiphbasecp --service metastore
+    networks:
+      - lakehousenet
+
+  # Trino for interactive queries
+  trino:
+    image: trinodb/trino:433
+    container_name: trino
+    ports:
+      - "8081:8080"
+    environment:
+      - AWS_REGION=us-east-1
+    volumes:
+      - ./trino/etc:/etc/trino
+    depends_on:
+      - minio
+    networks:
+      - lakehousenet
+
+  # Superset for data visualization
+  superset:
+    build:
+      context: ./superset
+    container_name: superset
+    depends_on:
+      - trino
+    environment:
+      SUPERSET_SECRET_KEY: supersecretkey
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./superset/superset-entrypoint.sh:/superset-entrypoint.sh
+      - superset_home:/app/superset_home
+    entrypoint: ["/bin/bash", "/superset-entrypoint.sh"]
+    networks:
+      - lakehousenet
+
+  flink-jobmanager:
+    build:
+      context: ..
+      dockerfile: docker/flink/Dockerfile
+    container_name: flink-jobmanager
+    depends_on:
+      - hive-metastore
+    ports:
+      - "8082:8081"
+    environment:
+      - HADOOP_CONF_DIR=/opt/hadoop/conf
+      - FLINK_CLASSPATH=/opt/flink/custom-jars/*
+    volumes:
+      - ./flink/conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
+      - ../src:/opt/flink/jobs
+      - ./hive/core-site.xml:/opt/hadoop/conf/core-site.xml:ro
+      - ./hive:/opt/hive/conf:ro
+    command: jobmanager
+    networks:
+      - lakehousenet
+
+  flink-taskmanager:
+    build:
+      context: ..
+      dockerfile: docker/flink/Dockerfile
+    container_name: flink-taskmanager
+    depends_on:
+      - flink-jobmanager
+    environment:
+      - HADOOP_CONF_DIR=/opt/hadoop/conf
+      - FLINK_CLASSPATH=/opt/flink/custom-jars/*
+    volumes:
+      - ./flink/conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
+      - ../src:/opt/flink/jobs
+      - ./hive/core-site.xml:/opt/hadoop/conf/core-site.xml:ro
+      - ./hive:/opt/hive/conf:ro
+    command: taskmanager
+    networks:
+      - lakehousenet
+
+  # Spark for batch and stream processing
+  spark:
+    build:
+      context: ..
+      dockerfile: docker/spark/Dockerfile
+    container_name: spark
+    ports:
+      - "4040:4040"
+      - "8080:8080"
+      - "7077:7077"
+      - "10000:10000"
+    environment:
+      - SPARK_MASTER_HOST=spark
+      - SPARK_MASTER_PORT=7077
+    volumes:
+      - ../src:/opt/spark-apps
+      # - ./conf:/opt/conf
+      - ./hive:/opt/spark/conf
+      - ./spark/start.sh:/opt/spark/start.sh
+    depends_on:
+      - minio
+      - hive-metastore
+    networks:
+      - lakehousenet
+    command: [
+      "bash", "-c",
+      "/opt/spark/start.sh & \
+      sleep 5 && \
+      /opt/spark/sbin/start-thriftserver.sh \
+        --master spark://spark:7077 \
+        --conf spark.cores.max=2 \
+        --conf spark.executor.cores=2 \
+        --conf spark.driver.extraClassPath=/opt/spark/custom-jars/* \
+        --conf spark.executor.extraClassPath=/opt/spark/custom-jars/* \
+        --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog \
+        --conf spark.sql.catalog.hive_catalog.type=hive \
+        --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083 \
+        --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse \
+        --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
+        --conf spark.hadoop.fs.s3a.access.key=admin \
+        --conf spark.hadoop.fs.s3a.secret.key=password \
+        --conf spark.hadoop.fs.s3a.path.style.access=true \
+      && tail -f /opt/spark/logs/*"
+    ]
+
+volumes:
+  hive-data:
+  superset_db_data:
+  superset_home:
+
+networks:
+  lakehousenet:
+    name: lakehousenet

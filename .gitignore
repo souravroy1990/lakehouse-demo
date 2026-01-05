@@ -205,3 +205,90 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+## Allow only the Docker build context folders
+
+!docker/
+
+## Ignore heavy stuff
+
+.git
+.gitignore
+jars/
+target/
+data/
+notebooks/
+__pycache__/
+*.log
+*.gz
+*.zip
+*.tar
+*.csv
+*.parquet
+
+## Python cache and build artifacts
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+dist/
+build/
+*.log
+
+## Node/npm stuff (if you ever use UI)
+
+node_modules/
+npm-debug.log
+
+## Virtual environments
+
+.venv/
+venv/
+env/
+
+## Local data, notebooks, and logs
+
+*.ipynb
+notebooks/
+logs/
+tmp/
+.DS_Store
+
+## OS / IDE junk
+
+*.swp
+*.swo
+*.bak
+*.tmp
+*.idea/
+.vscode/
+
+## Do not copy local dependencies or outputs
+
+src/__pycache__/
+src/.mypy_cache/
+src/.pytest_cache/
+src/test-reports/
+
+## Ignore data dumps and CSVs
+
+*.csv
+*.tsv
+*.json
+*.parquet
+*.gz
+*.zip
+
+## Ignore large external datasets
+
+data/
+datasets/
+
+## Ignore hive home directory
+hive-home/
+
+## Ignore minio home directory
+minio/

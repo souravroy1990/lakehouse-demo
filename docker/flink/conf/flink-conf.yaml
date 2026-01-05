@@ -1,0 +1,14 @@
+jobmanager.rpc.address: flink-jobmanager
+jobmanager.memory.process.size: 1024m
+taskmanager.memory.process.size: 1024m
+taskmanager.numberOfTaskSlots: 2
+blob.server.port: 6124
+query.server.port: 6125
+rest.port: 8081
+
+table.planner.catalogs.hive_catalog.type: hive
+table.planner.catalogs.hive_catalog.catalog-type: hive
+table.planner.catalogs.hive_catalog.hive-conf-dir: /opt/hive/conf
+
+table.planner.catalogs.hive_catalog.default-database: default
+table.planner.catalogs.hive_catalog.hive-version: 3.1.3

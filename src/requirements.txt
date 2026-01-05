@@ -1,0 +1,4 @@
+faker==37.8.0
+confluent-kafka==2.11.1
+pandas==2.3.3
+pyarrow==21.0.0
