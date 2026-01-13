@@ -104,7 +104,15 @@ CREATE TABLE IF NOT EXISTS trades_db.iceberg_trades (
   volume INT,
   trade_time TIMESTAMP(3)
 )
+PARTITIONED BY (symbol)
+WITH (
+  'format-version'='2',
+  'write.distribution-mode'='hash',
+  'write.metadata.delete-after-commit.enabled'='true',
+  'write.metadata.previous-versions-max'='50'
+)
 """)
+
 
 # ----------------------------------------------------------------------------- 
 # Paimon Sink Table (created in Paimon Catalog)
