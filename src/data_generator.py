@@ -25,4 +25,4 @@ if __name__ == "__main__":
         producer.produce(TOPIC, json.dumps(trade).encode("utf-8"))
         producer.poll(0)
         print(f"Produced: {trade}")
-        time.sleep(1)
+        time.sleep(5) # Sleep for 5 seconds before generating the next trade
