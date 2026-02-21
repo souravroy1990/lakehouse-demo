@@ -7,6 +7,9 @@ echo "🚀 Starting Spark Master..."
 echo "⚙️  Starting Spark Worker..."
 /opt/spark/sbin/start-worker.sh spark://spark:7077 --webui-port 8081
 
+echo "⏳ Waiting for worker registration..."
+sleep 10
+
 echo "📡 Starting Spark ThriftServer (Hive 4 + Iceberg + S3)..."
 
 /opt/spark/sbin/start-thriftserver.sh \
@@ -22,11 +25,7 @@ echo "📡 Starting Spark ThriftServer (Hive 4 + Iceberg + S3)..."
   --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
   --conf spark.hadoop.fs.s3a.path.style.access=true \
   --conf spark.hadoop.fs.s3a.access.key=admin \
-  --conf spark.hadoop.fs.s3a.secret.key=password \
-  --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem \
-  --conf spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version=2 \
-  --conf spark.hadoop.mapreduce.output.fileoutputformat.compress=true \
-  --conf spark.hadoop.mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.GzipCodec
+  --conf spark.hadoop.fs.s3a.secret.key=password
 
 echo "✅ Spark 3.5.1 with Hive 4 started."
 tail -f /opt/spark/logs/* 2>/dev/null || sleep infinity

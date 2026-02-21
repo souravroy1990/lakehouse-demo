@@ -87,6 +87,19 @@ This repository provides a fully functional **local lakehouse** that mirrors rea
 README.md                   → Includes details about the repository and steps to run the docker locally
 ```
 
+### For Rancher Desktop (WSL) Users
+
+If you are using **Rancher Desktop** with **WSL** in windows, Docker runs inside the WSL
+environment. To access your project files, you must navigate to the mounted
+Windows filesystem.
+
+After opening WSL, change directory to the repository location where the
+`docker/` folder resides:
+
+```bash
+cd /mnt/c/Users/<username>/path/to/repository
+```
+
 ### Download Dependency JARs
 
 Download the required JAR from Maven Central using `wget`:
@@ -279,6 +292,12 @@ SHOW TABLES;
 ```sql
 SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$snapshots`;
 SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$history`;
+SELECT * FROM `paimon_trades$partitions`;
+SELECT * FROM `paimon_trades$files`;
+SELECT * FROM `paimon_trades$manifests`;
+SELECT * FROM `paimon_trades$partitions`;
+SELECT * FROM `paimon_trades$buckets`;
+SELECT * FROM `paimon_trades$schemas`;
 ```
 
 ## Query Paimon Data
@@ -286,9 +305,216 @@ SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$history`;
 ```sql
 DESCRIBE paimon_trades;
 SELECT * FROM paimon_trades LIMIT 10;
+SELECT COUNT(*) FROM paimon_trades;
 ```
 
-## 🔥 5. Trino Iceberg Query Reference
+## Upsert functionality in Paimon
+
+```bash
+INSERT INTO paimon_trades VALUES ('pk-demo-1','INFY',1500,10,TIMESTAMP '2026-01-20 10:00:00');
+SELECT * FROM paimon_trades WHERE trade_id = 'pk-demo-1';
+INSERT INTO paimon_trades VALUES ('pk-demo-1','INFY',1550,25,TIMESTAMP '2026-01-20 10:05:00');
+```
+
+## 🔥 5. Apache Spark SQL – Iceberg Table Querying & Maintenance
+
+This section describes how to query and manage **Apache Iceberg tables** using **Apache Spark** via:
+- Spark SQL (CLI)
+- Scala (Spark Shell)
+- Python (Spark Submit)
+
+It also includes **recovery steps required after restarting only the Spark container**.
+
+### Access Spark Container
+
+```bash
+docker exec -it spark bash
+```
+
+### Query Iceberg Tables Using Python (Spark Submit)
+
+```bash
+spark-submit /opt/spark-apps/query_iceberg.py
+```
+
+### Query Iceberg Tables Using Spark SQL (SQL / Scala)
+
+```bash
+/opt/spark/bin/spark-sql   --master spark://spark:7077   --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions   --conf spark.sql.defaultCatalog=hive_catalog   --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog   --conf spark.sql.catalog.hive_catalog.type=hive   --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083   --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse   --conf spark.driver.extraClassPath=/opt/spark/custom-jars/*   --conf spark.executor.extraClassPath=/opt/spark/custom-jars/*
+```
+
+### Database & Table Recovery (Optional-After Spark Restart Only)
+
+```bash
+CREATE DATABASE hive_catalog.trades_db;
+SHOW DATABASES IN hive_catalog;
+DROP TABLE IF EXISTS hive_catalog.trades_db.iceberg_trades; # Check if the table exists first
+```
+
+### DROP TABLE IF EXISTS hive_catalog.trades_db.iceberg_trades
+
+Use the latest metadata JSON file from MinIO:
+
+```bash
+CALL hive_catalog.system.register_table(
+  table => 'trades_db.iceberg_trades',
+  metadata_file => 's3a://lakehouse/warehouse/trades_db.db/iceberg_trades/metadata/00006-793232ee-64be-4eb0-b7b9-5feeaba1a067.metadata.json'
+);
+```
+
+### Explore Iceberg Metadata Tables
+
+```bash
+USE hive_catalog.trades_db;
+
+SHOW DATABASES;
+SHOW TABLES;
+
+SHOW TBLPROPERTIES iceberg_trades;
+```
+
+#### Snapshots
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.snapshots;
+
+SELECT snapshot_id, parent_id, operation, committed_at, manifest_list
+FROM hive_catalog.trades_db.iceberg_trades.snapshots
+ORDER BY committed_at DESC;
+```
+
+#### History
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.history;
+```
+
+#### Manifests
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.manifests;
+```
+
+#### Time Travel Query
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades VERSION AS OF 2886444592202014212;
+```
+
+#### Partitions & Files
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.partitions;
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.files;
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.data_files;
+```
+
+#### Describe
+
+```bash
+DESCRIBE hive_catalog.trades_db.iceberg_trades;
+```
+
+### Refresh Iceberg Metadata in Spark/Cache Invalidation
+
+```bash
+REFRESH hive_catalog.trades_db.iceberg_trades;
+```
+
+### Iceberg Compaction (COMPACTION/Rewrite Data Files) – Scala
+
+```bash
+/opt/spark/bin/spark-shell \
+   --master spark://spark:7077 \
+   --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
+   --conf spark.sql.defaultCatalog=hive_catalog \
+   --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog \
+   --conf spark.sql.catalog.hive_catalog.type=hive \
+   --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083 \
+   --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse \
+   --jars /opt/spark/custom-jars/iceberg-spark-runtime-3.5_2.12-1.6.0.jar
+```
+
+#### Inspect Existing Data Files
+
+```bash
+spark.sql("""SELECT file_path, record_count, file_size_in_bytes FROM hive_catalog.trades_db.iceberg_trades.files""").show(false)
+```
+
+#### Run Scala Compaction Logic
+
+Copy and run **iceberg_rewrite.sc** on terminal
+
+### Verify New Snapshot After Compaction
+
+```bash
+SELECT snapshot_id, operation, committed_at FROM hive_catalog.trades_db.iceberg_trades.snapshots ORDER BY committed_at DESC;
+```
+
+This should show replace as the action/operation and a new snapshot generated
+
+### Query Paimon Tables Using Python (Spark Submit)
+
+```bash
+spark-submit /opt/spark-apps/query_paimon.py
+```
+
+### Query Paimon Tables Using Spark SQL (SQL)
+
+```bash
+/opt/spark/bin/spark-sql \
+  --master spark://spark:7077 \
+  --conf spark.driver.extraClassPath=/opt/spark/custom-jars/* \
+  --conf spark.executor.extraClassPath=/opt/spark/custom-jars/* \
+  --conf "spark.sql.extensions=org.apache.paimon.spark.extensions.PaimonSparkSessionExtensions" \
+  --conf "spark.sql.catalog.paimon=org.apache.paimon.spark.SparkCatalog" \
+  --conf "spark.sql.catalog.paimon.warehouse=s3a://lakehouse/paimon/warehouse" \
+  --conf "spark.sql.catalog.paimon.metastore=hive" \
+  --conf "spark.sql.catalog.paimon.uri=thrift://hive-metastore:9083" \
+  --conf "spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog" \
+  --conf "spark.sql.catalog.hive_catalog.type=hive" \
+  --conf "spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083" \
+  --conf "spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse"
+```
+
+#### Explore Paimon Tables
+
+```bash
+SHOW CATALOGS;
+SHOW DATABASES IN paimon;
+SHOW TABLES IN paimon.trades_db;
+DESCRIBE EXTENDED paimon.trades_db.paimon_trades;
+```
+
+#### Show Consistency in Paimon
+
+```bash
+SELECT * FROM paimon.trades_db.paimon_trades LIMIT 20;
+SELECT * FROM  paimon.trades_db.paimon_trades WHERE trade_id = 'pk-demo-1';
+```
+
+### Query Paimon + Iceberg Tables Using Spark SQL (SQL)
+
+```bash
+/opt/spark/bin/spark-sql \
+  --master spark://spark:7077 \
+  --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions \
+  --conf spark.sql.defaultCatalog=hive_catalog \
+  --jars /opt/spark/custom-jars/iceberg-spark-runtime-3.5_2.12-1.6.0.jar \
+  --conf spark.driver.extraClassPath=/opt/spark/custom-jars/* \
+  --conf spark.executor.extraClassPath=/opt/spark/custom-jars/* \
+  --conf "spark.sql.extensions=org.apache.paimon.spark.extensions.PaimonSparkSessionExtensions" \
+  --conf "spark.sql.catalog.paimon=org.apache.paimon.spark.SparkCatalog" \
+  --conf "spark.sql.catalog.paimon.warehouse=s3a://lakehouse/paimon/warehouse" \
+  --conf "spark.sql.catalog.paimon.metastore=hive" \
+  --conf "spark.sql.catalog.paimon.uri=thrift://hive-metastore:9083" \
+  --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog \
+  --conf spark.sql.catalog.hive_catalog.type=hive \
+  --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083 \
+  --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse
+```
+
+## 🔥 6. Trino Iceberg Query Reference
 
 This section documents commonly used Trino SQL queries for exploring and querying
 Iceberg tables using the Trino CLI.
@@ -332,7 +558,7 @@ SELECT snapshot_id, parent_id, summary FROM iceberg.trades_db."iceberg_trades$sn
 SELECT COUNT(*) FROM iceberg.trades_db.iceberg_trades FOR VERSION AS OF <snapshot_id>;
 ```
 
-## 🔥 6. Apache Superset – Trino Iceberg Integration
+## 🔥 7. Apache Superset – Trino Iceberg Integration
 
 This section explains how to connect **Apache Superset** to **Trino** and visualize
 Iceberg tables stored in the lakehouse.

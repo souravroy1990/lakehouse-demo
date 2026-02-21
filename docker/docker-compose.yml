@@ -167,7 +167,6 @@ services:
     networks:
       - lakehousenet
 
-  # Spark for batch and stream processing
   spark:
     build:
       context: ..
@@ -175,6 +174,7 @@ services:
     container_name: spark
     ports:
       - "4040:4040"
+      - "4041:4041"
       - "8080:8080"
       - "7077:7077"
       - "10000:10000"
@@ -183,34 +183,29 @@ services:
       - SPARK_MASTER_PORT=7077
     volumes:
       - ../src:/opt/spark-apps
-      # - ./conf:/opt/conf
       - ./hive:/opt/spark/conf
       - ./spark/start.sh:/opt/spark/start.sh
+      - ./hive/core-site.xml:/opt/spark/conf/core-site.xml
+      - ./hive/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ../jars/guava-28.2-jre.jar:/opt/spark/jars/guava-28.2-jre.jar
+      - ../jars/failureaccess-1.0.1.jar:/opt/spark/jars/failureaccess-1.0.1.jar
     depends_on:
       - minio
       - hive-metastore
     networks:
       - lakehousenet
-    command: [
-      "bash", "-c",
-      "/opt/spark/start.sh & \
-      sleep 5 && \
-      /opt/spark/sbin/start-thriftserver.sh \
-        --master spark://spark:7077 \
-        --conf spark.cores.max=2 \
-        --conf spark.executor.cores=2 \
-        --conf spark.driver.extraClassPath=/opt/spark/custom-jars/* \
-        --conf spark.executor.extraClassPath=/opt/spark/custom-jars/* \
-        --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog \
-        --conf spark.sql.catalog.hive_catalog.type=hive \
-        --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083 \
-        --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse \
-        --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
-        --conf spark.hadoop.fs.s3a.access.key=admin \
-        --conf spark.hadoop.fs.s3a.secret.key=password \
-        --conf spark.hadoop.fs.s3a.path.style.access=true \
+    command: >
+      bash -c "
+      /opt/spark/start.sh &&
+        --master spark://spark:7077
+        --conf spark.cores.max=2
+        --conf spark.executor.cores=2
+        --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
+        --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog
+        --conf spark.sql.catalog.hive_catalog.type=hive
+        --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083
+        --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse
       && tail -f /opt/spark/logs/*"
-    ]
 
 volumes:
   hive-data:

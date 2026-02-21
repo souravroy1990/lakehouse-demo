@@ -136,9 +136,13 @@ try:
     ) WITH (
       'bucket' = '8',
       'bucket-key' = 'trade_id',
-      'changelog-producer' = 'input'
+      'changelog-producer' = 'full-compaction',
+      'snapshot.time-retained' = '1 h',
+      'snapshot.num-retained.min' = '5',
+      'snapshot.num-retained.max' = '20'
     )
     """)
+
 except Exception as e:
     # tolerate the scenario where Paimon finds existing schema/files on the filesystem
     msg = str(e)
