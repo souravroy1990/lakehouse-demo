@@ -207,6 +207,20 @@ services:
         --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse
       && tail -f /opt/spark/logs/*"
 
+  duckdb:
+    build:
+      context: ./duckdb
+      dockerfile: Dockerfile
+    container_name: duckdb
+    stdin_open: true
+    tty: true
+    depends_on:
+      - minio
+    volumes:
+      - ./duckdb/data:/data
+    networks:
+      - lakehousenet
+
 volumes:
   hive-data:
   superset_db_data:

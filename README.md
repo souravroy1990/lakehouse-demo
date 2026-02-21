@@ -9,6 +9,7 @@ Welcome to the **Zero-to-Lakehouse** project — a fully open-source, production
 - 🪶 **Apache Paimon** (streaming-first lakehouse tables)
 - 🗂 **Hive Metastore** (catalog layer)
 - 🚀 **Apache Spark & Trino** (interactive SQL engines)
+- 🦆 **Duckdb** (In memory analytics)
 - 📊 **Apache Superset** (dashboards + BI)
 - 🪣 **MinIO** (S3-compatible data lake)
 - 🐳 **Docker Compose** (unified orchestration)
@@ -70,6 +71,7 @@ This repository provides a fully functional **local lakehouse** that mirrors rea
 
 ```bash
 /docker
+    /duckdb                 → Duckdb volume
     /flink                  → Flink JobManager, TaskManager, configs, jobs
     /spark                  → Spark master/worker, SQL client, custom JARs
     /trino                  → Trino coordinator + catalog configs
@@ -558,7 +560,150 @@ SELECT snapshot_id, parent_id, summary FROM iceberg.trades_db."iceberg_trades$sn
 SELECT COUNT(*) FROM iceberg.trades_db.iceberg_trades FOR VERSION AS OF <snapshot_id>;
 ```
 
-## 🔥 7. Apache Superset – Trino Iceberg Integration
+## 🦆 7. DuckDB + Iceberg - In Memory Analytics
+
+This section demonstrates how **DuckDB** can directly query **Apache Iceberg tables stored in MinIO (S3-compatible storage)** without using Hive Metastore or any external catalog.
+
+DuckDB acts as a **lightweight analytical query engine**, reading Iceberg metadata and Parquet files directly from object storage.
+
+---
+
+### 🎯 What we are checking
+
+- DuckDB can query **Iceberg tables directly from MinIO**
+- No Hive Metastore or catalog service is required
+- Queries are **ACID-consistent** via Iceberg snapshots
+- DuckDB always reads the **latest committed snapshot**
+- No in-progress or partial files are ever read
+
+#### Make a data directory
+
+```bash
+mkdir duckdb/data
+```
+
+#### Attach to the running DuckDB process
+
+```bash
+docker attach duckdb
+```
+
+#### Check db list
+
+```bash
+PRAGMA database_list;
+```
+
+#### Row count (latest snapshot)
+
+```bash
+SELECT count(*) FROM iceberg_scan('s3://lakehouse/warehouse/trades_db.db/iceberg_trades');
+```
+
+#### Inspect schema
+
+```bash
+DESCRIBE SELECT * FROM iceberg_scan('s3://lakehouse/warehouse/trades_db.db/iceberg_trades');
+```
+
+#### Preview data
+
+```bash
+SELECT * FROM iceberg_scan('s3://lakehouse/warehouse/trades_db.db/iceberg_trades') LIMIT 10;
+```
+
+#### Check latest snapshot
+
+```bash
+SELECT * FROM iceberg_snapshots('s3://lakehouse/warehouse/trades_db.db/iceberg_trades');
+```
+
+#### Check metadata
+
+```bash
+SELECT * FROM iceberg_metadata('s3://lakehouse/warehouse/trades_db.db/iceberg_trades');
+```
+
+#### Perform in memory analytics
+
+```bash
+SELECT
+    symbol,
+    COUNT(*) AS trades,
+    SUM(price) AS total_value
+  FROM iceberg_scan(
+    's3://lakehouse/warehouse/trades_db.db/iceberg_trades'
+  )
+  GROUP BY symbol
+  ORDER BY trades DESC;
+```
+
+#### Query a specific snapshot (snapshot ID known)
+
+```bash
+SELECT count(*)
+    FROM iceberg_scan(
+      's3://lakehouse/warehouse/trades_db.db/iceberg_trades',
+       snapshot_from_id => 5267319272613887200
+);
+```
+
+#### Read metadata files(Json)
+
+```bash
+SELECT *
+  FROM read_json(
+    's3://lakehouse/warehouse/trades_db.db/iceberg_trades/metadata/*.json'
+);
+```
+
+#### To see all the fields
+
+```bash
+.mode line
+```
+
+To go back to default mode
+
+```bash
+.mode duckbox
+```
+
+#### Read metadata files(Avro)
+
+```bash
+SELECT *
+    FROM read_avro(
+      's3://lakehouse/warehouse/trades_db.db/iceberg_trades/metadata/7dee4c5e-2918-4acf-aa38-858d228c81ab-m0.avro'
+);
+
+SELECT *
+    FROM read_avro(
+      's3://lakehouse/warehouse/trades_db.db/iceberg_trades/metadata/snap-5267319272613887200-1-7dee4c5e-2918-4acf-aa38-858d228c81ab.avro'
+);
+```
+
+#### Read data files(Parquet)
+
+```bash
+ SELECT *
+    FROM read_parquet(
+      's3://lakehouse/warehouse/trades_db.db/iceberg_trades/data/symbol=HDFCBANK/*'
+);
+
+SELECT *
+    FROM read_parquet(
+      's3://lakehouse/warehouse/trades_db.db/paimon_trades/bucket-0/*'
+);
+```
+
+#### Detach safely(To Avoid Lock)
+
+```bash
+Ctrl + P, Ctrl + Q
+```
+
+## 🔥 8. Apache Superset – Trino Iceberg Integration
 
 This section explains how to connect **Apache Superset** to **Trino** and visualize
 Iceberg tables stored in the lakehouse.
