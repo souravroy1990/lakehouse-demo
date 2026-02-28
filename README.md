@@ -18,7 +18,6 @@ This repository provides a fully functional **local lakehouse** that mirrors rea
 
 ## 📐 Architecture Overview
 
-
                           ┌──────────────────────┐
                           │   Fake Data Producer │
                           │   (Python Generator) │
@@ -89,13 +88,16 @@ This repository provides a fully functional **local lakehouse** that mirrors rea
 README.md                   → Includes details about the repository and steps to run the docker locally
 ```
 
-### For Rancher Desktop (WSL) Users
+### 🐧 For Rancher Desktop (WSL) Users
 
-If you are using **Rancher Desktop** with **WSL** in windows, Docker runs inside the WSL
-environment. To access your project files, you must navigate to the mounted
-Windows filesystem.
+If you are using **Rancher Desktop** with **WSL** on **Windows**, Docker runs **inside the WSL
+environment**, not directly on Windows.  
+To access your project files, you must navigate to the mounted Windows filesystem.
 
-After opening WSL, change directory to the repository location where the
+👉 **Install WSL (if not already installed):**  
+<https://learn.microsoft.com/en-us/windows/wsl/install>
+
+After opening your WSL terminal, change directory to the repository location where the
 `docker/` folder resides:
 
 ```bash
@@ -158,7 +160,7 @@ Wait ~60 seconds for all services to initialize.
 
 ## 📡 1. Data Generator
 
-### Check fake trades streaming into Kafka:
+### Check fake trades streaming into Kafka
 
 ```bash
 docker logs -f docker-fake-data-producer-1
@@ -166,7 +168,7 @@ docker logs -f docker-fake-data-producer-1
 
 ## 🔥 2. Kafka
 
-### Enter the Kafka container and verify topics and messages:
+### Enter the Kafka container and verify topics and messages
 
 ```bash
 docker exec -it docker-kafka-1 /bin/bash
@@ -180,9 +182,44 @@ kafka-console-consumer \
   --max-messages 10
 ```
 
+### Describe kafka topic setup
+
+```bash
+docker exec -it docker-kafka-1 kafka-topics \
+  --bootstrap-server kafka:9092 \
+  --describe \
+  --topic fake-data-topic
+```
+
+### Earliest offset
+
+```bash
+docker exec -it docker-kafka-1 kafka-run-class kafka.tools.GetOffsetShell \
+  --broker-list kafka:9092 \
+  --topic fake-data-topic \
+  --time -2
+```
+
+### Latest offset
+
+```bash
+docker exec -it docker-kafka-1 kafka-run-class kafka.tools.GetOffsetShell \
+  --broker-list kafka:9092 \
+  --topic fake-data-topic \
+  --time -1
+```
+
+### Latest offset partition wise
+
+```bash
+docker exec -it docker-kafka-1 kafka-run-class kafka.tools.GetOffsetShell \
+  --broker-list kafka:9092 \
+  --topic fake-data-topic
+```
+
 ## 🗂 3. Hive Metastore & Lake Storage Verification
 
-### Enter the Hive Metastore container and verify that the Hadoop S3 (MinIO) filesystem is accessible:
+### Enter the Hive Metastore container and verify that the Hadoop S3 (MinIO) filesystem is accessible
 
 ```bash
 docker exec -it hive-metastore /bin/bash
@@ -280,6 +317,236 @@ DESCRIBE iceberg_trades;
 SELECT * FROM iceberg_trades LIMIT 10;
 ```
 
+### Query Planning
+
+```sql
+EXPLAIN FORMATTED
+SELECT *
+FROM hive_catalog.trades_db.iceberg_trades
+WHERE symbol = 'INFY';
+
+EXPLAIN
+SELECT *
+FROM hive_catalog.trades_db.iceberg_trades
+WHERE symbol = 'INFY';
+```
+
+### File Pruning
+
+```sql
+SELECT *
+FROM hive_catalog.trades_db.iceberg_trades
+WHERE symbol = 'INFY';
+```
+
+Check in spark jobs UI -> Sql/Dataframe for no. of files scanned
+
+### Enable Runtime & Adaptive Plan Visibility
+
+```sql
+SET spark.sql.adaptive.enabled = true;
+SET spark.sql.adaptive.logLevel = DEBUG;
+SET spark.sql.optimizer.excludedRules = '';
+SET spark.sql.iceberg.planning.enabled=true;
+```
+
+### Explain With Cost & Statistics
+
+```sql
+EXPLAIN COST
+SELECT *
+FROM hive_catalog.trades_db.iceberg_trades
+WHERE symbol = 'INFY';
+```
+
+### Confirm Partition Pruning Explicitly
+
+```sql
+SELECT *
+FROM hive_catalog.trades_db.iceberg_trades
+WHERE price > 1000;
+```
+
+Scans all partition
+
+```sql
+SELECT *
+FROM hive_catalog.trades_db.iceberg_trades
+WHERE symbol = 'INFY'
+AND price > 1000;
+```
+
+Scans only 1 partition
+
+**Note: Iceberg + Spark reads data in columnar format (Arrow / vectorized Parquet), Require row-based processing So Spark inserts: Columnar → Row conversion, Batchscan means Iceberg optimizations are happening**
+
+### Groupby
+
+```sql
+SELECT symbol, COUNT(*) FROM  hive_catalog.trades_db.iceberg_trades GROUP BY symbol;
+
+EXPLAIN FORMATTED
+SELECT symbol, COUNT(*)
+FROM hive_catalog.trades_db.iceberg_trades
+GROUP BY symbol;
+```
+
+### Iceberg Schema Evolution
+
+### ADD Column
+
+```sql
+ALTER TABLE hive_catalog.trades_db.iceberg_trades
+ADD COLUMNS (
+  exchange STRING
+);
+
+SELECT * FROM hive_catalog.trades_db.iceberg_trades LIMIT 5;
+```
+
+### RENAME COLUMN
+
+```sql
+ALTER TABLE hive_catalog.trades_db.iceberg_trades
+RENAME exchange TO exchange_system;
+```
+
+### DROP COLUMN
+
+```sql
+ALTER TABLE hive_catalog.trades_db.iceberg_trades
+DROP COLUMN trade_time;
+
+DESCRIBE hive_catalog.trades_db.iceberg_trades;
+```
+
+**Note: Schema evolution, Partition evolution doesn't create new snapshot, only metadata.json is created**
+
+### Partition Evolution
+
+#### Add new partition
+
+```sql
+ALTER TABLE hive_catalog.trades_db.iceberg_trades
+ADD PARTITION FIELD trade_id;
+```
+
+#### Drop old partition
+
+```sql
+ALTER TABLE hive_catalog.trades_db.iceberg_trades
+DROP PARTITION FIELD symbol;
+
+DESCRIBE hive_catalog.trades_db.iceberg_trades;
+DESCRIBE TABLE EXTENDED trades_db.iceberg_trades;
+```
+
+#### Check partiiton pruning still works with symbol
+
+```sql
+SELECT * FROM hive_catalog.trades_db.iceberg_trades WHERE symbol = 'INFY';
+```
+
+#### Expire old snapshots
+
+```sql
+CALL hive_catalog.system.expire_snapshots(
+'trades_db.iceberg_trades',
+TIMESTAMP '2026-02-25 00:00:00'
+);
+```
+
+#### Remove orphan files
+
+```sql
+CALL hive_catalog.system.remove_orphan_files(
+'trades_db.iceberg_trades'
+);
+```
+
+#### Repartition(CTAS migration)
+
+```sql
+CREATE TABLE trades_db.iceberg_trades_v2
+USING iceberg
+PARTITIONED BY (trade_id)
+AS
+SELECT * FROM trades_db.iceberg_trades;
+```
+
+After a CTAS migration old and new table can be swapped and old table can be deleted. This is the cleanest way.
+
+### Iceberg prevents auto reuse of old column
+
+Do this in same order
+
+```sql
+ALTER TABLE hive_catalog.trades_db.iceberg_trades DROP COLUMN trade_time;
+ALTER TABLE hive_catalog.trades_db.iceberg_trades DROP COLUMN exchange;
+ALTER TABLE hive_catalog.trades_db.iceberg_trades ADD COLUMN trade_time timestamp;
+SELECT * FROM trades_db.iceberg_trades limit 5;
+```
+
+It should show the trade_time as NULL as iceberg don't use same column identity internally to prevent PII, GDPR regulations. To get back the old data simply DROP the table and re-register with the first metadata with which it was working.
+
+### Partition + Bucket together
+
+```sql
+ALTER TABLE iceberg_trades
+SET PARTITION SPEC (
+  symbol,
+  bucket(16, trade_id)
+);
+```
+
+This creates a partition based on symbol and then buckets based on hash of trade-id. Help with query example- WHERE symbol='INFY'	Partition pruning, WHERE trade_id='uuid' Bucket pruning, WHERE symbol='INFY' AND trade_id='uuid' Excellent pruning.
+
+### Rollback
+
+1. Rollback is only applicable to snapshot and not to schema/partition i.e. metadata. So if only one snapshot exists then the best way to restore table to old format is to use CTAS and recreate another table using the data from the old table
+
+2. Other option is manual restore.
+
+```sql
+SELECT snapshot_id,parent_id,operation,committed_at
+FROM hive_catalog.trades_db.iceberg_trades.snapshots
+ORDER BY committed_at;
+
+INSERT INTO hive_catalog.trades_db.iceberg_trades
+VALUES
+('rollback-test-1', 'INFY', 999.99, 10, TIMESTAMP '2026-02-28 10:00:00'),
+('rollback-test-2', 'TCS',  888.88, 20, TIMESTAMP '2026-02-28 10:05:00');
+
+SELECT symbol, COUNT(*) FROM  hive_catalog.trades_db.iceberg_trades GROUP BY symbol;
+
+INSERT INTO hive_catalog.trades_db.iceberg_trades
+VALUES
+('rollback-test-3', 'TCS', 998.99, 10, TIMESTAMP '2026-02-28 10:00:00');
+
+SELECT snapshot_id,parent_id,operation,committed_at
+FROM hive_catalog.trades_db.iceberg_trades.snapshots
+ORDER BY committed_at;
+
+SELECT * FROM hive_catalog.trades_db.iceberg_trades WHERE trade_id LIKE 'rollback-test%';
+
+CALL hive_catalog.system.rollback_to_snapshot('trades_db.iceberg_trades', 4291488040064066143);
+
+SELECT symbol, COUNT(*) FROM  hive_catalog.trades_db.iceberg_trades GROUP BY symbol;
+SELECT * FROM hive_catalog.trades_db.iceberg_trades WHERE trade_id LIKE 'rollback-test%';
+```
+
+Rollback based on timestamp is also allowed using
+
+```sql
+CALL hive_catalog.system.rollback_to_timestamp('trades_db.iceberg_trades', TIMESTAMP '2026-02-19 16:05:29');
+```
+
+### Check ancestor lineage
+
+```sql
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.history;
+```
+
 ### Paimon (hive_catalog) Verification
 
 ```sql
@@ -321,6 +588,7 @@ INSERT INTO paimon_trades VALUES ('pk-demo-1','INFY',1550,25,TIMESTAMP '2026-01-
 ## 🔥 5. Apache Spark SQL – Iceberg Table Querying & Maintenance
 
 This section describes how to query and manage **Apache Iceberg tables** using **Apache Spark** via:
+
 - Spark SQL (CLI)
 - Scala (Spark Shell)
 - Python (Spark Submit)
