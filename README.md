@@ -309,17 +309,156 @@ SHOW TABLES;
 SELECT * FROM `hive_catalog`.`trades_db`.`iceberg_trades$snapshots`;
 SELECT * FROM `hive_catalog`.`trades_db`.`iceberg_trades$history`;
 ```
-
-### Query Iceberg Data
+### Paimon (hive_catalog) Verification
 
 ```sql
-DESCRIBE iceberg_trades;
-SELECT * FROM iceberg_trades LIMIT 10;
+USE CATALOG paimon_catalog;
+SHOW DATABASES;
+USE trades_db;
+SHOW TABLES;
+```
+
+### Check Paimon Snapshots
+
+```sql
+SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$snapshots`;
+SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$history`;
+SELECT * FROM `paimon_trades$partitions`;
+SELECT * FROM `paimon_trades$files`;
+SELECT * FROM `paimon_trades$manifests`;
+SELECT * FROM `paimon_trades$partitions`;
+SELECT * FROM `paimon_trades$buckets`;
+SELECT * FROM `paimon_trades$schemas`;
+```
+
+## Query Paimon Data
+
+```sql
+DESCRIBE paimon_trades;
+SELECT * FROM paimon_trades LIMIT 10;
+SELECT COUNT(*) FROM paimon_trades;
+```
+
+## Upsert functionality in Paimon
+
+```bash
+INSERT INTO paimon_trades VALUES ('pk-demo-1','INFY',1500,10,TIMESTAMP '2026-01-20 10:00:00');
+SELECT * FROM paimon_trades WHERE trade_id = 'pk-demo-1';
+INSERT INTO paimon_trades VALUES ('pk-demo-1','INFY',1550,25,TIMESTAMP '2026-01-20 10:05:00');
+```
+
+## 🔥 5. Apache Spark SQL – Iceberg Table Querying & Maintenance
+
+This section describes how to query and manage **Apache Iceberg tables** using **Apache Spark** via:
+
+- Spark SQL (CLI)
+- Scala (Spark Shell)
+- Python (Spark Submit)
+
+It also includes **recovery steps required after restarting only the Spark container**.
+
+### Access Spark Container
+
+```bash
+docker exec -it spark bash
+```
+
+### Query Iceberg Tables Using Python (Spark Submit)
+
+```bash
+spark-submit /opt/spark-apps/query_iceberg.py
+```
+
+### Query Iceberg Tables Using Spark SQL (SQL / Scala)
+
+```bash
+/opt/spark/bin/spark-sql   --master spark://spark:7077   --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions   --conf spark.sql.defaultCatalog=hive_catalog   --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog   --conf spark.sql.catalog.hive_catalog.type=hive   --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083   --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse   --conf spark.driver.extraClassPath=/opt/spark/custom-jars/*   --conf spark.executor.extraClassPath=/opt/spark/custom-jars/*
+```
+
+### Database & Table Recovery (Optional-After Spark Restart Only)
+
+```bash
+CREATE DATABASE hive_catalog.trades_db;
+SHOW DATABASES IN hive_catalog;
+DROP TABLE IF EXISTS hive_catalog.trades_db.iceberg_trades; # Check if the table exists first
+```
+
+### DROP TABLE IF EXISTS hive_catalog.trades_db.iceberg_trades
+
+Use the latest metadata JSON file from MinIO:
+
+```bash
+CALL hive_catalog.system.register_table(
+  table => 'trades_db.iceberg_trades',
+  metadata_file => 's3a://lakehouse/warehouse/trades_db.db/iceberg_trades/metadata/00006-793232ee-64be-4eb0-b7b9-5feeaba1a067.metadata.json'
+);
+```
+
+### Explore Iceberg Metadata Tables
+
+```bash
+USE hive_catalog.trades_db;
+
+SHOW DATABASES;
+SHOW TABLES;
+
+SHOW TBLPROPERTIES iceberg_trades;
+```
+
+#### Snapshots
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.snapshots;
+
+SELECT snapshot_id, parent_id, operation, committed_at, manifest_list
+FROM hive_catalog.trades_db.iceberg_trades.snapshots
+ORDER BY committed_at DESC;
+```
+
+#### History
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.history;
+```
+
+#### Manifests
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.manifests;
+```
+
+#### Time Travel Query
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades VERSION AS OF 2886444592202014212;
+```
+
+#### Partitions & Files
+
+```bash
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.partitions;
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.files;
+SELECT * FROM hive_catalog.trades_db.iceberg_trades.data_files;
+```
+
+#### Describe
+
+```bash
+DESCRIBE hive_catalog.trades_db.iceberg_trades;
+```
+
+### Refresh Iceberg Metadata in Spark/Cache Invalidation
+
+```bash
+REFRESH hive_catalog.trades_db.iceberg_trades;
 ```
 
 ### Query Planning
 
 ```sql
+DESCRIBE iceberg_trades;
+SELECT * FROM iceberg_trades LIMIT 10;
+
 EXPLAIN FORMATTED
 SELECT *
 FROM hive_catalog.trades_db.iceberg_trades
@@ -545,150 +684,6 @@ CALL hive_catalog.system.rollback_to_timestamp('trades_db.iceberg_trades', TIMES
 
 ```sql
 SELECT * FROM hive_catalog.trades_db.iceberg_trades.history;
-```
-
-### Paimon (hive_catalog) Verification
-
-```sql
-USE CATALOG paimon_catalog;
-SHOW DATABASES;
-USE trades_db;
-SHOW TABLES;
-```
-
-### Check Paimon Snapshots
-
-```sql
-SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$snapshots`;
-SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$history`;
-SELECT * FROM `paimon_trades$partitions`;
-SELECT * FROM `paimon_trades$files`;
-SELECT * FROM `paimon_trades$manifests`;
-SELECT * FROM `paimon_trades$partitions`;
-SELECT * FROM `paimon_trades$buckets`;
-SELECT * FROM `paimon_trades$schemas`;
-```
-
-## Query Paimon Data
-
-```sql
-DESCRIBE paimon_trades;
-SELECT * FROM paimon_trades LIMIT 10;
-SELECT COUNT(*) FROM paimon_trades;
-```
-
-## Upsert functionality in Paimon
-
-```bash
-INSERT INTO paimon_trades VALUES ('pk-demo-1','INFY',1500,10,TIMESTAMP '2026-01-20 10:00:00');
-SELECT * FROM paimon_trades WHERE trade_id = 'pk-demo-1';
-INSERT INTO paimon_trades VALUES ('pk-demo-1','INFY',1550,25,TIMESTAMP '2026-01-20 10:05:00');
-```
-
-## 🔥 5. Apache Spark SQL – Iceberg Table Querying & Maintenance
-
-This section describes how to query and manage **Apache Iceberg tables** using **Apache Spark** via:
-
-- Spark SQL (CLI)
-- Scala (Spark Shell)
-- Python (Spark Submit)
-
-It also includes **recovery steps required after restarting only the Spark container**.
-
-### Access Spark Container
-
-```bash
-docker exec -it spark bash
-```
-
-### Query Iceberg Tables Using Python (Spark Submit)
-
-```bash
-spark-submit /opt/spark-apps/query_iceberg.py
-```
-
-### Query Iceberg Tables Using Spark SQL (SQL / Scala)
-
-```bash
-/opt/spark/bin/spark-sql   --master spark://spark:7077   --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions   --conf spark.sql.defaultCatalog=hive_catalog   --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog   --conf spark.sql.catalog.hive_catalog.type=hive   --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083   --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse   --conf spark.driver.extraClassPath=/opt/spark/custom-jars/*   --conf spark.executor.extraClassPath=/opt/spark/custom-jars/*
-```
-
-### Database & Table Recovery (Optional-After Spark Restart Only)
-
-```bash
-CREATE DATABASE hive_catalog.trades_db;
-SHOW DATABASES IN hive_catalog;
-DROP TABLE IF EXISTS hive_catalog.trades_db.iceberg_trades; # Check if the table exists first
-```
-
-### DROP TABLE IF EXISTS hive_catalog.trades_db.iceberg_trades
-
-Use the latest metadata JSON file from MinIO:
-
-```bash
-CALL hive_catalog.system.register_table(
-  table => 'trades_db.iceberg_trades',
-  metadata_file => 's3a://lakehouse/warehouse/trades_db.db/iceberg_trades/metadata/00006-793232ee-64be-4eb0-b7b9-5feeaba1a067.metadata.json'
-);
-```
-
-### Explore Iceberg Metadata Tables
-
-```bash
-USE hive_catalog.trades_db;
-
-SHOW DATABASES;
-SHOW TABLES;
-
-SHOW TBLPROPERTIES iceberg_trades;
-```
-
-#### Snapshots
-
-```bash
-SELECT * FROM hive_catalog.trades_db.iceberg_trades.snapshots;
-
-SELECT snapshot_id, parent_id, operation, committed_at, manifest_list
-FROM hive_catalog.trades_db.iceberg_trades.snapshots
-ORDER BY committed_at DESC;
-```
-
-#### History
-
-```bash
-SELECT * FROM hive_catalog.trades_db.iceberg_trades.history;
-```
-
-#### Manifests
-
-```bash
-SELECT * FROM hive_catalog.trades_db.iceberg_trades.manifests;
-```
-
-#### Time Travel Query
-
-```bash
-SELECT * FROM hive_catalog.trades_db.iceberg_trades VERSION AS OF 2886444592202014212;
-```
-
-#### Partitions & Files
-
-```bash
-SELECT * FROM hive_catalog.trades_db.iceberg_trades.partitions;
-SELECT * FROM hive_catalog.trades_db.iceberg_trades.files;
-SELECT * FROM hive_catalog.trades_db.iceberg_trades.data_files;
-```
-
-#### Describe
-
-```bash
-DESCRIBE hive_catalog.trades_db.iceberg_trades;
-```
-
-### Refresh Iceberg Metadata in Spark/Cache Invalidation
-
-```bash
-REFRESH hive_catalog.trades_db.iceberg_trades;
 ```
 
 ### Iceberg Compaction (COMPACTION/Rewrite Data Files) – Scala
