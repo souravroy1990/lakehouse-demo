@@ -58,6 +58,9 @@ This repository provides a fully functional **local lakehouse** that mirrors rea
                      │   ┌───────────┐  ┌──────────┐ │
                      │   │   Spark   │  │  Trino   │ │
                      │   └───────────┘  └──────────┘ │
+                     │         ┌───────────┐         │           
+                     │         │   DuckDb  │         │
+                     │         └───────────┘         │
                      └──────────────┬────────────────┘
                                     │
                                     ▼
