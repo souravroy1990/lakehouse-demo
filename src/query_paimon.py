@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession
 
+
 spark = SparkSession.builder \
     .appName("QueryPaimonCatalog") \
     .config("spark.sql.extensions", "org.apache.paimon.spark.extensions.PaimonSparkSessionExtensions") \

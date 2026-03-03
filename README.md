@@ -217,6 +217,10 @@ docker exec -it docker-kafka-1 kafka-run-class kafka.tools.GetOffsetShell \
   --topic fake-data-topic
 ```
 
+### Kafka UI
+
+Kafka UI is available at port 8090, all the message received is visible thorugh the UI for monitoring.
+
 ## 🗂 3. Hive Metastore & Lake Storage Verification
 
 ### Enter the Hive Metastore container and verify that the Hadoop S3 (MinIO) filesystem is accessible
@@ -322,7 +326,6 @@ SHOW TABLES;
 
 ```sql
 SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$snapshots`;
-SELECT * FROM `paimon_catalog`.`trades_db`.`paimon_trades$history`;
 SELECT * FROM `paimon_trades$partitions`;
 SELECT * FROM `paimon_trades$files`;
 SELECT * FROM `paimon_trades$manifests`;
@@ -755,8 +758,25 @@ DESCRIBE EXTENDED paimon.trades_db.paimon_trades;
 
 ```bash
 SELECT * FROM paimon.trades_db.paimon_trades LIMIT 20;
-SELECT * FROM  paimon.trades_db.paimon_trades WHERE trade_id = 'pk-demo-1';
+SELECT * FROM paimon.trades_db.paimon_trades WHERE trade_id = 'pk-demo-1';
 ```
+
+#### Schema Evolution in Paimon
+
+```sql
+ALTER TABLE paimon.trades_db.paimon_trades
+ADD COLUMN exchange STRING;
+
+ALTER TABLE paimon.trades_db.paimon_trades
+RENAME COLUMN exchange TO venue;
+
+ALTER TABLE paimon.trades_db.paimon_trades
+DROP COLUMN venue;
+
+DESCRIBE paimon.trades_db.paimon_trades;
+```
+
+In each of these cases new schema file is generated in paimon.
 
 ### Query Paimon + Iceberg Tables Using Spark SQL (SQL)
 
@@ -783,6 +803,8 @@ SELECT * FROM  paimon.trades_db.paimon_trades WHERE trade_id = 'pk-demo-1';
 
 This section documents commonly used Trino SQL queries for exploring and querying
 Iceberg tables using the Trino CLI.
+
+Spark reads directly from Iceberg metadata JSON, but Trino lists schemas by asking Hive Metastore. If the DB location is outside HMS warehouse, Trino hides it. So we need to register the database properly with a location.
 
 ---
 

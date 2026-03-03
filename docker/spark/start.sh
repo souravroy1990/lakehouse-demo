@@ -5,7 +5,7 @@ echo "🚀 Starting Spark Master..."
 /opt/spark/sbin/start-master.sh --host spark --port 7077 --webui-port 8080
 
 echo "⚙️  Starting Spark Worker..."
-/opt/spark/sbin/start-worker.sh spark://spark:7077 --webui-port 8081
+/opt/spark/sbin/start-worker.sh spark://spark:7077 --host spark --cores 4 --memory 4g --webui-port 8081
 
 echo "⏳ Waiting for worker registration..."
 sleep 10
@@ -14,6 +14,11 @@ echo "📡 Starting Spark ThriftServer (Hive 4 + Iceberg + S3)..."
 
 /opt/spark/sbin/start-thriftserver.sh \
   --master spark://spark:7077 \
+  --conf spark.driver.host=spark \
+  --conf spark.driver.bindAddress=0.0.0.0 \
+  --conf spark.executor.cores=2 \
+  --conf spark.executor.memory=1g \
+  --conf spark.cores.max=2 \
   --conf spark.driver.extraClassPath=/opt/spark/custom-jars/* \
   --conf spark.executor.extraClassPath=/opt/spark/custom-jars/* \
   --conf spark.sql.catalogImplementation=hive \

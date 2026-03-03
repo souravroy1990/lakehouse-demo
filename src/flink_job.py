@@ -147,7 +147,7 @@ except Exception as e:
     # tolerate the scenario where Paimon finds existing schema/files on the filesystem
     msg = str(e)
     if "Schema in filesystem exists" in msg or "creation is not allowed" in msg or "Schema in filesystem" in msg:
-        print("Note: Paimon schema already exists on filesystem — skipping create (non-fatal).")
+        print("Note: Paimon schema already exists on filesystem — skipping create.")
     else:
         raise
 
@@ -164,7 +164,6 @@ def ensure_registered():
         if "paimon_trades" in names:
             return
     except Exception:
-        # SHOW TABLES may fail if DB doesn't exist in catalog — proceed to registration attempt
         pass
 
     # Attempt to register catalog metadata for the existing filesystem table.

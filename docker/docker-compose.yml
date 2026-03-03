@@ -25,6 +25,21 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     networks:
       - lakehousenet
+
+  # Kafka UI for monitoring
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: lakehouse-kafka
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - lakehousenet
     
   # Python fake data producer
   fake-data-producer:
@@ -106,6 +121,7 @@ services:
       - ./trino/etc:/etc/trino
     depends_on:
       - minio
+      - hive-metastore
     networks:
       - lakehousenet
 
@@ -194,18 +210,7 @@ services:
       - hive-metastore
     networks:
       - lakehousenet
-    command: >
-      bash -c "
-      /opt/spark/start.sh &&
-        --master spark://spark:7077
-        --conf spark.cores.max=2
-        --conf spark.executor.cores=2
-        --conf spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions
-        --conf spark.sql.catalog.hive_catalog=org.apache.iceberg.spark.SparkCatalog
-        --conf spark.sql.catalog.hive_catalog.type=hive
-        --conf spark.sql.catalog.hive_catalog.uri=thrift://hive-metastore:9083
-        --conf spark.sql.catalog.hive_catalog.warehouse=s3a://lakehouse/warehouse
-      && tail -f /opt/spark/logs/*"
+    command: ["/bin/bash", "/opt/spark/start.sh"]
 
   duckdb:
     build:

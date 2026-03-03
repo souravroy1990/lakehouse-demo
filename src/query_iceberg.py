@@ -1,5 +1,6 @@
 from pyspark.sql import SparkSession
 
+
 spark = SparkSession.builder \
     .appName("QueryIcebergHiveCatalog") \
     .config("spark.sql.catalog.hive_catalog", "org.apache.iceberg.spark.SparkCatalog") \
