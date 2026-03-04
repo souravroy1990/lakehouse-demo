@@ -133,7 +133,9 @@ try:
       volume INT,
       trade_time TIMESTAMP(3),
       PRIMARY KEY (trade_id) NOT ENFORCED
-    ) WITH (
+    )
+    PARTITIONED BY (symbol) 
+    WITH (
       'bucket' = '8',
       'bucket-key' = 'trade_id',
       'changelog-producer' = 'full-compaction',

@@ -779,6 +779,25 @@ DROP COLUMN venue;
 DESCRIBE paimon.trades_db.paimon_trades;
 ```
 
+### File Pruning
+
+```sql
+SELECT *
+FROM paimon.trades_db.paimon_trades
+WHERE symbol = 'INFY';
+
+EXPLAIN FORMATTED
+SELECT *
+FROM paimon.trades_db.paimon_trades
+WHERE symbol = 'INFY';
+```
+
+### Rollback in Paimon
+
+```sql
+CALL sys.rollback_to('trades_db.paimon_trades', 3);
+```
+
 In each of these cases new schema file is generated in paimon.
 
 ### Query Paimon + Iceberg Tables Using Spark SQL (SQL)
