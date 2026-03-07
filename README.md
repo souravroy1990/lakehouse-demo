@@ -353,6 +353,20 @@ SELECT * FROM paimon_trades WHERE trade_id = 'pk-demo-1';
 INSERT INTO paimon_trades VALUES ('pk-demo-1','INFY',1550,25,TIMESTAMP '2026-01-20 10:05:00');
 ```
 
+### Rollback in Paimon
+
+```sql
+SHOW PROCEDURES;
+SELECT COUNT(*) FROM paimon_trades where symbol = 'INFY';
+CALL sys.compact('trades_db.paimon_trades');
+
+INSERT INTO paimon_trades VALUES ('pk-demo-2','INFY',1510,10,TIMESTAMP '2026-01-20 10:00:00');
+SELECT COUNT(*) FROM paimon_trades where symbol = 'INFY';
+CALL sys.rollback_to('trades_db.paimon_trades', 2);
+SELECT * FROM paimon_trades$snapshots;
+SELECT COUNT(*) FROM paimon_trades where symbol = 'INFY';
+```
+
 ## 🔥 5. Apache Spark SQL – Iceberg Table Querying & Maintenance
 
 This section describes how to query and manage **Apache Iceberg tables** using **Apache Spark** via:
@@ -779,6 +793,8 @@ DROP COLUMN venue;
 DESCRIBE paimon.trades_db.paimon_trades;
 ```
 
+In each of these cases new schema file is generated in paimon.
+
 ### File Pruning
 
 ```sql
@@ -791,14 +807,6 @@ SELECT *
 FROM paimon.trades_db.paimon_trades
 WHERE symbol = 'INFY';
 ```
-
-### Rollback in Paimon
-
-```sql
-CALL sys.rollback_to('trades_db.paimon_trades', 3);
-```
-
-In each of these cases new schema file is generated in paimon.
 
 ### Query Paimon + Iceberg Tables Using Spark SQL (SQL)
 
