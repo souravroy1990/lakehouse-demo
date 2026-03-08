@@ -109,7 +109,7 @@ cd /mnt/c/Users/<username>/path/to/repository
 
 ### Download Dependency JARs
 
-Download the required JAR from Maven Central using `wget`:
+Download the required JAR from Maven Central using `wget`(for **Mac** replace **wget** with **curl** -LO <url>):
 
 ```bash
 mkdir -p jars # from project root(lakehouse-demo in this case)
@@ -156,8 +156,11 @@ wget --no-check-certificate https://archive.apache.org/dist/spark/spark-3.5.1/sp
 
 ```bash
 cd docker
-docker compose up -d
+docker-compose up -d 
+OR
+docker-compose up -d minio(for individual service)
 ```
+**Note:** Before making hive-metastore up need to create a bucket named **lakehouse** inside minio so that hive-metastore can find the registration path
 
 Wait ~60 seconds for all services to initialize.
 
