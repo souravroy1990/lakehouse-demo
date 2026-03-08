@@ -1,5 +1,6 @@
 # -------------------------
-#  FLINK CUSTOM IMAGE (Hive 3.1.3 compatible)
+# FLINK CUSTOM IMAGE (Hive 3.1.3 compatible)
+# Switch to this section for machine with x86 architecture (e.g. Intel/AMD)
 # -------------------------
 FROM flink:1.18.1-scala_2.12-java8
 
@@ -14,6 +15,32 @@ RUN apt-get update && apt-get install -y python3 python3-pip && \
     pip install --no-cache-dir apache-flink==1.18.0 confluent_kafka faker && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Switch to this section for machine with ARM architecture (e.g. Apple Silicon)
+# FROM flink:1.18.0-scala_2.12
+
+# USER root
+
+# RUN apt-get update && apt-get install -y \
+#     python3 \
+#     python3-pip \
+#     build-essential \
+#     openjdk-11-jdk \
+#     wget \
+#     && ln -sf /usr/bin/python3 /usr/bin/python \
+#     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# RUN export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac)))) && \
+#     echo "JAVA_HOME=$JAVA_HOME" >> /etc/environment
+
+# ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-arm64
+# ENV PATH=$JAVA_HOME/bin:$PATH
+
+# RUN pip install --no-cache-dir \
+#     apache-flink==1.18.0 \
+#     confluent_kafka \
+#     faker
+
+# Remains same in Windows & Mac
 # -------------------------------------------------------------------
 #  Environment setup
 # -------------------------------------------------------------------

@@ -8,15 +8,15 @@ services:
       - "2181:2181"
     networks:
       - lakehousenet
- 
+
   # Kafka broker
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"    # internal container port for PLAINTEXT
-      - "29092:29092"  # optional host port for PLAINTEXT_HOST
+      - "9092:9092" # internal container port for PLAINTEXT
+      - "29092:29092" # optional host port for PLAINTEXT_HOST
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -40,7 +40,7 @@ services:
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
     networks:
       - lakehousenet
-    
+
   # Python fake data producer
   fake-data-producer:
     build:
@@ -75,6 +75,7 @@ services:
     image: apache/hive:3.1.3
     container_name: hive-metastore
     hostname: hive-metastore
+    # platform: linux/amd64 # Optional-Force AMD64 for Hive due to compatibility issues with ARM-based images
     depends_on:
       - minio
     ports:
@@ -87,9 +88,9 @@ services:
       HIVE_CONF_DIR: /opt/hive/conf
       HADOOP_CLIENT_OPTS: "-Xmx1G"
     volumes:
-      - ./hive:/opt/hive/conf                # Hive configuration files
-      - ./hive-home:/home/hive               # Hive user home for Beeline, logs, history
-      - hive-data:/user/hive/warehouse       # Persistent warehouse data (optional)
+      - ./hive:/opt/hive/conf # Hive configuration files
+      - ./hive-home:/home/hive # Hive user home for Beeline, logs, history
+      - hive-data:/user/hive/warehouse # Persistent warehouse data (optional)
       - ./hive/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
       - ./hive/core-site.xml:/opt/hive/conf/core-site.xml
       - ./hive/hive-site.xml:/opt/hive/conf/hive-site.xml
@@ -130,6 +131,7 @@ services:
     build:
       context: ./superset
     container_name: superset
+    # platform: linux/amd64 # Optional-Force AMD64 for Superset due to compatibility issues with ARM-based images
     depends_on:
       - trino
     environment:
