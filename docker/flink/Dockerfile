@@ -72,9 +72,6 @@ ADD https://repo1.maven.org/maven2/org/apache/hive/hive-metastore/3.1.3/hive-met
 ADD https://repo1.maven.org/maven2/org/apache/hive/hive-exec/3.1.3/hive-exec-3.1.3.jar ${FLINK_LIB_DIR}/
 ADD https://repo1.maven.org/maven2/org/apache/hive/hive-common/3.1.3/hive-common-3.1.3.jar ${FLINK_LIB_DIR}/
 
-# Calcite dependencies matching Hive 3.1.3
-ADD https://repo1.maven.org/maven2/org/apache/calcite/calcite-core/1.26.0/calcite-core-1.26.0.jar ${FLINK_LIB_DIR}/
-ADD https://repo1.maven.org/maven2/org/apache/calcite/calcite-linq4j/1.26.0/calcite-linq4j-1.26.0.jar ${FLINK_LIB_DIR}/
 
 # Common libraries
 ADD https://repo1.maven.org/maven2/com/google/guava/guava/28.2-jre/guava-28.2-jre.jar ${FLINK_LIB_DIR}/
